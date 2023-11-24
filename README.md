@@ -1,4 +1,6 @@
-# MicroBatch: Go Micro-Batching Library
+# MicroBatcher: Go Micro-Batching Library
+
+1. Simple Microbatching example written in golang. 
 
 ## Usage 
 1. Create struct that implements BatchProcessor Interface such as 
@@ -13,13 +15,19 @@ func (p *YourBatchProcessor) Process (job microbatch.Job) (microbatch.JobResult,
 }
 ```
 
-2. Initiate a new Microbatcher using Factory function. Provide required configuration such as "batchSize" , "frequency" and your batch Processor that you created above.
+2. Initiate a new Microbatcher using Factory function. Provide required  such as "batchSize" , "frequency" and your batch Processor that you created above.
 ```go
-	mb := microbatch.NewMicroBatch(microbatch.Config{
-		BatchSize: 5,
-		Processor: &YourBatchProcessor{},
-		Frequency: time.Second * 2,
-	})
+	mb := microbatch.NewMicroBatch(batchSize, yourBatchProcessor, frequency)
+```
+
+3. Create a channel to get your successfully ran job results. 
+```go
+    jobResult := make(chan microbatch.JobResult{})
+```
+
+4. Start MicroBatcher and pass your job result channel. 
+```go
+   mb.Run(context.Background(), jobResult)
 ```
 
 3. Add Jobs to your microbatcher
@@ -27,9 +35,5 @@ func (p *YourBatchProcessor) Process (job microbatch.Job) (microbatch.JobResult,
    mb.Submit(microbatch.Job{Id: 1, Task: 10})
 ```
 
-4. Start MicroBatcher
-```go
-   mb.RunInBatch(context.Background())
-```
 
 For a full implementation with optional configuration, please checkout the example provided in the repo.

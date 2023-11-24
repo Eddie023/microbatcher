@@ -7,13 +7,30 @@ import (
 	"time"
 )
 
-type Config struct {
-	// size of each batch cycle
-	BatchSize int
-	// Processor should implement BatchProcessor interface
-	Processor BatchProcessor
-	// how often the system processes or dispatches batches of task
-	Frequency time.Duration
+type Job struct {
+	Task any
+	Id   int
+}
+
+type JobResult struct {
+	JobId  int
+	Result any
+}
+
+// It is the responsibility of user to validate the provided job.
+type BatchProcessor interface {
+	Process(Job) (JobResult, error)
+}
+
+type MicroBatch struct {
+	batchSize        int
+	frequency        time.Duration
+	processor        BatchProcessor
+	ShutdownChan     chan struct{}
+	cron             time.Ticker
+	jobs             *multiConsumerQueue
+	jobResult        chan JobResult
+	maxRetryAttempts int
 }
 
 // Optional configurations
@@ -21,19 +38,15 @@ type Options struct {
 	MaxRetryAttempts int
 }
 
-type MicroBatch struct {
-	BatchSize        int
-	Frequency        time.Duration
-	Processor        BatchProcessor
-	ShutdownChan     chan struct{}
-	cron             time.Ticker
-	jobs             *MultiConsumerQueue
-	maxRetryAttempts int
+// WithMaxRetryAttempt will set the retryable errors maximum try to provided value.
+func WithMaxRetryAttempt(num int) func(o *Options) {
+	return func(o *Options) {
+		o.MaxRetryAttempts = num
+	}
 }
 
 // NewMicroBatch initiates new micro batcher with provided config.
-func NewMicroBatch(cfg Config, opts ...func(o *Options)) *MicroBatch {
-
+func NewMicroBatch(batchSize int, processor BatchProcessor, frequency time.Duration, jobResult chan JobResult, opts ...func(o *Options)) *MicroBatch {
 	o := Options{
 		MaxRetryAttempts: MAX_RETRY_ATTEMPTS,
 	}
@@ -42,72 +55,76 @@ func NewMicroBatch(cfg Config, opts ...func(o *Options)) *MicroBatch {
 		opt(&o)
 	}
 
-	m := MicroBatch{
-		BatchSize:        cfg.BatchSize,
-		maxRetryAttempts: o.MaxRetryAttempts,
-		Frequency:        time.Second * 5,
-		Processor:        cfg.Processor,
-		cron:             *time.NewTicker(cfg.Frequency),
-		jobs:             &MultiConsumerQueue{},
+	return &MicroBatch{
+		batchSize:        batchSize,
+		processor:        processor,
+		frequency:        frequency,
+		cron:             *time.NewTicker(frequency),
+		jobs:             &multiConsumerQueue{},
+		jobResult:        jobResult,
 		ShutdownChan:     make(chan struct{}),
+		maxRetryAttempts: o.MaxRetryAttempts,
 	}
+}
 
-	return &m
+// Run triggers the new microbatcher that based on the configured Frequency
+// will periodically process the accepted Jobs in batch accoording to configured BatchSize
+func (m *MicroBatch) Run(ctx context.Context, jobResult chan<- JobResult) {
+	slog.Info("New microbatch started", "batch_size", m.batchSize, "frequency", m.frequency)
+	for {
+		select {
+		case <-ctx.Done():
+			m.Shutdown()
+		case <-m.cron.C:
+			batchedJobs := m.generateBatch(m.batchSize)
+
+			slog.Info("Processing", "time", time.Now(), "remaining_jobs", m.jobs.Len())
+
+			m.process(batchedJobs)
+		}
+	}
 }
 
 // Add new Job to the MicroBatcher
 func (m *MicroBatch) Submit(j Job) {
-	m.jobs.Enqueue(j)
+	m.jobs.Enqueue(Job{
+		Task: j.Task,
+		Id:   j.Id,
+	})
 }
 
 // Shutdown method will close our microbatcher from accepting any new jobs.
 // This can be used to provide contextual information such as close after certain time or
 // close when user interrupts
+// gracefully shutdown after all previously accepted Jobs are processed
 func (m *MicroBatch) Shutdown() {
-	close(m.ShutdownChan)
+	// send shutdown signal
+	slog.Info("shutdown signal received... processing remaining jobs")
+
+	if m.jobs.Len() > 0 {
+		batchedJobs := m.generateBatch(m.jobs.Len())
+		m.process(batchedJobs)
+	}
+
+	slog.Info("no remaining jobs...gracefully shutting down")
 }
 
 // Retrieve items from queue in batches
 // batches are generated based on configured BatchSize
-func (m *MicroBatch) generateBatch() []Job {
-	batchJobs := m.jobs.Dequeue(m.BatchSize)
+func (m *MicroBatch) generateBatch(batchSize int) []Job {
+	batchJobs := m.jobs.Dequeue(batchSize)
 
 	return batchJobs
 }
 
-// RunInBatch triggers the new microbatcher that based on the configured Frequency
-// will periodically process the accepted Jobs in batch accoording to configured BatchSize
-func (m *MicroBatch) RunInBatch(ctx context.Context) {
-	slog.Info("New microbatch started", "batch_size", m.BatchSize, "frequency", m.Frequency)
-	for {
-		select {
-		case <-m.cron.C:
-			// create batch
-			batchedJobs := m.generateBatch()
-
-			if len(batchedJobs) == 0 {
-				slog.Info("Successfully completed all accepted jobs")
-				close(m.ShutdownChan)
-				return
-			}
-
-			for _, job := range batchedJobs {
-				jobResult, err := ProcessWithRetry(ctx, m.Processor, job, m.maxRetryAttempts)
-				if err != nil {
-					// FATAL: unhandled error occurred
-					slog.Error("Job failed", "job_id", job.Id, "task_input", job.Task, "error msg", err.Error(), "status", "skipping")
-					continue
-				}
-
-				slog.Info("Job completed", "job_id", job.Id, "task_input", job.Task, "result", jobResult.Result)
-			}
+func (m *MicroBatch) process(jobs []Job) {
+	for _, job := range jobs {
+		res, err := processWithRetry(m.processor, job, m.maxRetryAttempts)
+		if err != nil {
+			// jobResult <- err
+			continue
 		}
-	}
-}
 
-// WithMaxRetryAttempt will set the retryable errors maximum try to provided value.
-func WithMaxRetryAttempt(num int) func(o *Options) {
-	return func(o *Options) {
-		o.MaxRetryAttempts = num
+		m.jobResult <- res
 	}
 }

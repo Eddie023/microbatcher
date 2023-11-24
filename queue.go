@@ -1,7 +1,6 @@
 package microbatch
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -10,14 +9,14 @@ type node struct {
 	Next  *node
 }
 
-// MultiConsumerQueue is a simple linkedlist implementation such that
+// multiConsumerQueue is a simple linkedlist implementation such that
 // we can insert item in Last In First Out (LIFO) fashion.
-type MultiConsumerQueue struct {
+type multiConsumerQueue struct {
 	Head  *node
 	mutex sync.Mutex
 }
 
-func (mcq *MultiConsumerQueue) Enqueue(value Job) {
+func (mcq *multiConsumerQueue) Enqueue(value Job) {
 	mcq.mutex.Lock()
 	defer mcq.mutex.Unlock()
 
@@ -40,7 +39,7 @@ func (mcq *MultiConsumerQueue) Enqueue(value Job) {
 	current.Next = node
 }
 
-func (mcq *MultiConsumerQueue) Dequeue(batchsize int) []Job {
+func (mcq *multiConsumerQueue) Dequeue(batchsize int) []Job {
 	mcq.mutex.Lock()
 	defer mcq.mutex.Unlock()
 
@@ -63,18 +62,17 @@ func (mcq *MultiConsumerQueue) Dequeue(batchsize int) []Job {
 	return jobs
 }
 
-func (mcq *MultiConsumerQueue) Visit() {
+func (mcq *multiConsumerQueue) Visit() {
 	mcq.mutex.Lock()
 	defer mcq.mutex.Unlock()
 
 	current := mcq.Head
 	for current != nil {
-		fmt.Println("node is", current.Value.Task)
 		current = current.Next
 	}
 }
 
-func (mcq *MultiConsumerQueue) Len() int {
+func (mcq *multiConsumerQueue) Len() int {
 	mcq.mutex.Lock()
 	defer mcq.mutex.Unlock()
 

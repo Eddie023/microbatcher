@@ -23,7 +23,7 @@ func TestMultiConsumerQueue_Enqueue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mcq := &MultiConsumerQueue{}
+			mcq := &multiConsumerQueue{}
 
 			for _, j := range tt.values {
 				mcq.Enqueue(j)
@@ -82,7 +82,7 @@ func TestMultiConsumerQueue_Dequeue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mcq := &MultiConsumerQueue{}
+			mcq := &multiConsumerQueue{}
 
 			for _, j := range tt.values {
 				mcq.Enqueue(j)

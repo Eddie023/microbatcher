@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/eddie023/microbatch"
@@ -42,34 +43,36 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
-	processor := &SquareProcessor{}
-	mb := microbatch.NewMicroBatch(microbatch.Config{
-		BatchSize: 5,
-		Processor: processor,
-		Frequency: time.Second * 2,
-	}, microbatch.WithMaxRetryAttempt(5))
+	jobResult := make(chan microbatch.JobResult)
+	squareProcessor := &SquareProcessor{}
+	mb := microbatch.NewMicroBatch(5, squareProcessor, time.Second*2, jobResult, microbatch.WithMaxRetryAttempt(3))
+
+	// Setup signal catching
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+
+	// start microbatcher
+	go mb.Run(ctx, jobResult)
 
 	// simuate adding jobs to our microbatcher
 	for i := 0; i <= 11; i++ {
-		mb.Submit(microbatch.Job{Id: i, Task: i})
+		go func(i int) {
+			mb.Submit(microbatch.Job{Id: i, Task: i})
+		}(i)
 	}
 
-	// attempt to add invalid job as well
-	mb.Submit(microbatch.Job{
-		Task: "invalid",
-		Id:   12,
-	})
-
-	// start microbatcher
-	go mb.RunInBatch(ctx)
+	go func() {
+		for c := range jobResult {
+			slog.Info("Job completed", "job_id", c.JobId, "result", c.Result)
+		}
+	}()
 
 	for {
 		select {
-		case <-mb.ShutdownChan:
-			return
-		case <-c:
+		case <-shutdown:
 			slog.Warn("Job interrupted", "message", "user interrupt")
 			mb.Shutdown()
+			return
 		}
 	}
 }

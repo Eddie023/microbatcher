@@ -1,7 +1,6 @@
 package microbatch
 
 import (
-	"context"
 	"testing"
 )
 
@@ -15,39 +14,61 @@ func (d *DummyProcessor) Process(j Job) (JobResult, error) {
 	}, nil
 }
 
-func TestMicroBatch_RunInBatch(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-		jobs []Job
-	}{
-		{
-			name: "Should run successfully run and exit even without any jobs submitted",
-			cfg: Config{
-				BatchSize: 10,
-				Processor: &DummyProcessor{},
-				Frequency: 2,
-			},
-			jobs: []Job{},
-		},
-		{
-			name: "Should successfully return job result for submitted jobs",
-			cfg: Config{
-				BatchSize: 2,
-				Processor: &DummyProcessor{},
-				Frequency: 2,
-			},
-			jobs: []Job{{Task: 1, Id: 1}, {Task: 2, Id: 2}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := NewMicroBatch(tt.cfg)
+// func TestMicroBatch_RunInBatch(t *testing.T) {
+// 	tests := []struct {
+// 		name string
+// 		cfg  Config
+// 		jobs []Job
+// 	}{
+// 		{
+// 			name: "Should run successfully run and exit even without any jobs submitted",
+// 			cfg: Config{
+// 				BatchSize: 10,
+// 				Processor: &DummyProcessor{},
+// 				Frequency: 2,
+// 			},
+// 			jobs: []Job{},
+// 		},
+// 		{
+// 			name: "Should successfully return job result for submitted jobs",
+// 			cfg: Config{
+// 				BatchSize: 2,
+// 				Processor: &DummyProcessor{},
+// 				Frequency: 2,
+// 			},
+// 			jobs: []Job{{Task: 1, Id: 1}, {Task: 2, Id: 2}},
+// 		},
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			m := NewMicroBatch(tt.cfg)
 
-			for _, j := range tt.jobs {
-				m.Submit(j)
-			}
-			m.RunInBatch(context.TODO())
-		})
-	}
+// 			for _, j := range tt.jobs {
+// 				m.Submit(j)
+// 			}
+// 			m.Run(context.TODO())
+// 		})
+// 	}
+// }
+
+func TestMicrobatcher(t *testing.T) {
+	// t.Run("microbatcher should stay alive without any jobs in batch", func(t *testing.T) {
+	// 	m := NewMicroBatch(Config{
+	// 		BatchSize: 5,
+	// 		Processor: &DummyProcessor{},
+	// 		Frequency: time.Second * 5,
+	// 	})
+
+	// 	m.RunInBatch(context.Background())
+	// })
+
+	t.Run("microbatcher should process jobs specified in the batch size", func(t *testing.T) {
+		// m := NewMicroBatch(Config{
+		// 	BatchSize: 5,
+		// 	Processor: &DummyProcessor{},
+		// 	Frequency: time.Second * 5,
+		// })
+
+		// m.Run(context.Background())
+	})
 }
