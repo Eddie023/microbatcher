@@ -1,4 +1,4 @@
-# MicroBatch: Go Micro-Batching Library
+# MicroBatcher: Go Micro-Batching Library
 
 ## Usage 
 1. Create struct that implements BatchProcessor Interface such as 
